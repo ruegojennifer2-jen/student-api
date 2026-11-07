@@ -7,9 +7,18 @@ import StudentList from './components/StudentList.vue'
 axios.defaults.baseURL = '/api'
 axios.defaults.headers.common['Accept'] = 'application/json'
 
+// Send the Bearer token automatically with every request
+axios.interceptors.request.use((config) => {
+  const t = localStorage.getItem('token')
+  if (t) config.headers.Authorization = 'Bearer ' + t
+  return config
+})
+
 const token = ref(localStorage.getItem('token'))
 const user = ref(JSON.parse(localStorage.getItem('user') || 'null'))
-const isAdmin = computed(() => ['admin', 'administrator'].includes(String(user.value?.role).toLowerCase()))
+const isAdmin = computed(() =>
+  ['admin', 'administrator'].includes(String(user.value?.role).toLowerCase())
+)
 
 const credentials = ref({ email: '', password: '' })
 const students = ref([])
@@ -18,9 +27,6 @@ const errors = ref({})
 const message = ref('')
 const messageType = ref('success')
 const loading = ref(false)
-
-function setToken(t) { axios.defaults.headers.common['Authorization'] = 'Bearer ' + t }
-if (token.value) setToken(token.value)
 
 function notify(text, type = 'success') {
   message.value = text
@@ -32,14 +38,13 @@ async function login() {
   loading.value = true
   try {
     const { data } = await axios.post('/login', credentials.value)
-    token.value = data.token
-    user.value = data.user
     localStorage.setItem('token', data.token)
     localStorage.setItem('user', JSON.stringify(data.user))
-    setToken(data.token)
+    token.value = data.token
+    user.value = data.user
     credentials.value = { email: '', password: '' }
-    notify('Logged in!')
-    loadStudents()
+    notify('Login successful! Welcome.')
+    await loadStudents()
   } catch (e) {
     notify('Login failed. Check your email/password.', 'error')
   } finally {
@@ -54,7 +59,6 @@ function logout() {
   user.value = null
   students.value = []
   selected.value = null
-  delete axios.defaults.headers.common['Authorization']
 }
 
 async function loadStudents() {
@@ -63,8 +67,12 @@ async function loadStudents() {
     const { data } = await axios.get('/students')
     students.value = data.data ?? data
   } catch (e) {
-    if (e.response?.status === 401) logout()
-    else notify('Could not load students.', 'error')
+    if (e.response?.status === 401) {
+      logout()
+      notify('Session expired. Please log in again.', 'error')
+    } else {
+      notify('Could not load students.', 'error')
+    }
   } finally {
     loading.value = false
   }
@@ -110,71 +118,105 @@ onMounted(() => { if (token.value) loadStudents() })
 </script>
 
 <template>
-  <!-- Login screen -->
+  <!-- LOGIN SCREEN -->
   <div v-if="!token" class="login-page">
     <form class="login-card" @submit.prevent="login">
-      <h1>Student Management</h1>
+      <h1>Student Management System</h1>
       <p class="subtitle">Sign in to continue</p>
 
       <p v-if="message" :class="['alert', messageType]">{{ message }}</p>
 
       <label>Email</label>
-      <input v-model="credentials.email" type="email" required placeholder="you@example.com" />
+      <input v-model="credentials.email" type="email" required placeholder="Enter your email" />
 
       <label>Password</label>
-      <input v-model="credentials.password" type="password" required placeholder="Password" />
+      <input v-model="credentials.password" type="password" required placeholder="Enter your password" />
 
       <button type="submit" :disabled="loading">{{ loading ? 'Signing in...' : 'Login' }}</button>
     </form>
   </div>
 
-  <!-- Student management -->
+  <!-- MAIN SCREEN -->
   <div v-else class="container">
-    <div class="topbar">
+    <header class="hero">
       <div>
-        <h1>Student Management</h1>
-        <span class="role-badge">{{ isAdmin ? 'Administrator' : 'Regular User' }}: {{ user?.name }}</span>
+        <h1>🎓 Student Management System</h1>
+        <p>Laravel REST API + Vue.js 3</p>
       </div>
-      <button class="secondary" @click="logout">Logout</button>
-    </div>
+      <div class="hero-right">
+        <strong>{{ user?.name }}</strong>
+        <div class="hero-actions">
+          <span class="pill">{{ isAdmin ? 'Administrator' : 'Regular User' }}</span>
+          <button class="logout" @click="logout">Logout</button>
+        </div>
+      </div>
+    </header>
 
     <p v-if="message" :class="['alert', messageType]">{{ message }}</p>
-    <p v-if="loading" class="loading">Loading...</p>
+
+    <div v-if="isAdmin" class="info-box admin">
+      <strong>Administrator Access</strong><br />
+      You can add, edit, and delete students.
+    </div>
+    <div v-else class="info-box">
+      <strong>Regular User Access</strong><br />
+      You can view student records, but you cannot add, edit, or delete students.
+    </div>
 
     <StudentForm v-if="isAdmin" :student="selected" :errors="errors" @save="saveStudent" @cancel="selected = null" />
-    <p v-else class="alert info">You have view-only access. Only an Administrator can add, edit or delete students.</p>
+
+    <div class="card toolbar">
+      <div>
+        <strong>Student Records</strong><br />
+        <span class="muted">Total Students: {{ students.length }}</span>
+      </div>
+      <button class="refresh" :disabled="loading" @click="loadStudents">
+        {{ loading ? 'Loading...' : 'Refresh' }}
+      </button>
+    </div>
 
     <StudentList :students="students" :is-admin="isAdmin" @edit="selected = $event" @delete="deleteStudent" />
   </div>
 </template>
 
 <style>
-body { font-family: Arial, sans-serif; background: #f3f4f6; margin: 0; }
-.container { max-width: 800px; margin: 30px auto; padding: 0 16px; }
-.card { background: #fff; padding: 16px; border-radius: 8px; margin: 16px 0; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
-input, select { display: block; width: 100%; padding: 8px; margin: 8px 0 4px; box-sizing: border-box; }
+body { font-family: Arial, sans-serif; background: #f3f4f6; margin: 0; color: #1f2937; }
+.container { max-width: 960px; margin: 30px auto; padding: 0 16px; }
+
+.hero { background: #1e3a8a; color: #fff; border-radius: 14px; padding: 24px 28px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+.hero h1 { margin: 0 0 8px; font-size: 20px; }
+.hero p { margin: 0; font-size: 15px; }
+.hero-right { text-align: right; }
+.hero-actions { display: flex; align-items: center; gap: 12px; margin-top: 6px; justify-content: flex-end; }
+.pill { background: #dbeafe; color: #1e3a8a; padding: 6px 14px; border-radius: 999px; font-size: 13px; }
+button.logout { background: #dc2626; padding: 12px 18px; font-weight: bold; margin: 0; border-radius: 8px; }
+
+.card { background: #fff; padding: 18px; border-radius: 10px; margin: 16px 0; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+.toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.muted { color: #6b7280; font-size: 14px; }
+button.refresh { background: #0f766e; padding: 12px 20px; font-weight: bold; border-radius: 8px; margin: 0; }
+
+.alert { padding: 14px 16px; border-radius: 6px; margin: 12px 0; }
+.alert.success { background: #dcfce7; color: #166534; }
+.alert.error { background: #fee2e2; color: #991b1b; }
+.info-box { background: #dbeafe; color: #1e3a8a; padding: 16px 18px; border-radius: 6px; margin: 12px 0; line-height: 1.6; }
+.info-box.admin { background: #ede9fe; color: #4c1d95; }
+
+input, select { display: block; width: 100%; padding: 10px; margin: 8px 0 4px; box-sizing: border-box; border: 1px solid #d1d5db; border-radius: 6px; }
 button { background: #2563eb; color: #fff; border: 0; padding: 8px 14px; border-radius: 4px; cursor: pointer; margin-right: 6px; }
 button:disabled { opacity: .6; cursor: not-allowed; }
 button.danger { background: #dc2626; }
 button.secondary { background: #6b7280; }
-.alert { padding: 10px; border-radius: 4px; }
-.alert.success { background: #dcfce7; color: #166534; }
-.alert.error { background: #fee2e2; color: #991b1b; }
-.alert.info { background: #dbeafe; color: #1e40af; }
 .error-text { color: #dc2626; font-size: 13px; }
+
 table { width: 100%; border-collapse: collapse; background: #fff; }
-th, td { padding: 8px; border-bottom: 1px solid #e5e7eb; text-align: left; }
+th { background: #1e3a8a; color: #fff; padding: 12px; text-align: left; }
+td { padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: left; }
 
-.login-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; background: linear-gradient(135deg, #eff6ff, #e0e7ff); }
-.login-card { width: 100%; max-width: 380px; background: #fff; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.12); padding: 32px; }
-.login-card h1 { margin: 0; text-align: center; font-size: 24px; color: #1f2937; }
+.login-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; background: #eef2ff; }
+.login-card { width: 100%; max-width: 380px; background: #fff; border-radius: 14px; box-shadow: 0 6px 24px rgba(0,0,0,.1); padding: 32px; }
+.login-card h1 { margin: 0; text-align: center; font-size: 22px; color: #1e3a8a; }
 .login-card .subtitle { text-align: center; color: #6b7280; margin: 4px 0 16px; font-size: 14px; }
-.login-card label { font-size: 14px; font-weight: bold; color: #374151; display: block; margin-top: 8px; }
-.login-card input { border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 12px; }
-.login-card button { width: 100%; margin: 20px 0 0; padding: 11px; font-size: 16px; border-radius: 8px; }
-
-.topbar { display: flex; justify-content: space-between; align-items: center; }
-.topbar h1 { margin: 0 0 4px; }
-.role-badge { display: inline-block; background: #e0e7ff; color: #3730a3; padding: 3px 10px; border-radius: 999px; font-size: 13px; }
-.loading { color: #6b7280; }
+.login-card label { font-size: 14px; font-weight: bold; display: block; margin-top: 10px; }
+.login-card button { width: 100%; margin: 20px 0 0; padding: 12px; font-size: 15px; border-radius: 8px; }
 </style>

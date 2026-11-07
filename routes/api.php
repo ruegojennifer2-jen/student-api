@@ -1,25 +1,39 @@
+
 <?php
 
-use App\Http\Controllers\AuthController;
-use App\Http\Controllers\StudentController;
-use App\Http\Middleware\AdminMiddleware;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
+use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\StudentController;
+use App\Http\Middleware\AdminMiddleware;
+
+// LOGIN
 Route::post('/login', [AuthController::class, 'login']);
 
+// PROTECTED ROUTES
 Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/user', fn (Request $request) => $request->user());
+
+    // GET USER
+    Route::get('/user', function (Request $request) {
+        return $request->user();
+    });
+
+    // LOGOUT
     Route::post('/logout', [AuthController::class, 'logout']);
 
-    // Everyone logged in can view
+    // VIEW STUDENTS
     Route::get('/students', [StudentController::class, 'index']);
-    Route::get('/students/{student}', [StudentController::class, 'show']);
+    Route::get('/students/{id}', [StudentController::class, 'show']);
 
-    // Only Administrator can change
-    Route::middleware(AdminMiddleware::class)->group(function () {
+    // ADMIN ONLY
+    Route::middleware([AdminMiddleware::class])->group(function () {
+
         Route::post('/students', [StudentController::class, 'store']);
-        Route::put('/students/{student}', [StudentController::class, 'update']);
-        Route::delete('/students/{student}', [StudentController::class, 'destroy']);
+
+        Route::put('/students/{id}', [StudentController::class, 'update']);
+
+        Route::delete('/students/{id}', [StudentController::class, 'destroy']);
+
     });
 });
